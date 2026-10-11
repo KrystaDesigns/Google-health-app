@@ -232,3 +232,12 @@ table.data td { font-variant-numeric: tabular-nums; }
   .range { width: 100%; }
   .report ul { columns: 1; }
 }
+
+.sync-btn { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+.spin { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-banner { color: var(--critical); border-color: var(--critical); }
+.gh-status { display: flex; gap: 8px; align-items: center; margin: 10px 0; font-size: 13px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.on { background: var(--good); }
+.form input.wide { max-width: 100%; width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }

@@ -18,6 +18,17 @@ import { Insights } from './views/Insights';
 import { DataView } from './views/DataView';
 import { Import } from './views/Import';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ApiError, loadGis, signIn, signOut, syncRange, type SyncReport } from './data/googleHealth';
+import { deriveSkinTempDelta } from './data/derive';
+
+export interface SyncState {
+  busy: boolean;
+  done: number;
+  total: number;
+  label: string;
+  error?: string;
+  report?: SyncReport;
+}
 
 const VIEWS = [
   { id: 'overview', label: 'Overview', icon: '◎' },
@@ -52,6 +63,7 @@ export default function App() {
   const [range, setRange] = useState<Range | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  const [sync, setSync] = useState<SyncState>({ busy: false, done: 0, total: 0, label: '' });
 
   useEffect(() => {
     loadDataset().then((d) => {
@@ -59,6 +71,8 @@ export default function App() {
       setLoaded(true);
       if (!d) setView('import');
     });
+    // Preload Google sign-in so the consent popup can open directly from a click.
+    if (loadSettings().googleClientId) loadGis().catch(() => {});
     const onHash = () => setView(viewFromHash());
     addEventListener('hashchange', onHash);
     const mq = matchMedia('(prefers-color-scheme: dark)');
@@ -112,6 +126,43 @@ export default function App() {
     setRange(null);
   };
 
+  const runSync = async (full = false) => {
+    if (sync.busy) return;
+    if (!settings.googleClientId) {
+      goto('import');
+      return;
+    }
+    setSync({ busy: true, done: 0, total: 0, label: 'Signing in…' });
+    try {
+      await signIn(settings.googleClientId);
+      const today = new Date();
+      const to = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const live = ds?.source.includes('Google Health (live)');
+      // Incremental: re-fetch from 2 days before the last sync (late-arriving data); otherwise the chosen backfill.
+      const from = !full && live && settings.googleLastSync
+        ? addDays(settings.googleLastSync.slice(0, 10), -2)
+        : addDays(to, -(settings.googleFirstSyncDays - 1));
+      const { dataset, report } = await syncRange(from, to, (done, total, label) => setSync((s) => ({ ...s, done, total, label })));
+      if (!Object.keys(dataset.days).length && report.failed.length) throw new Error(report.failed[0].error);
+      const base = ds && !ds.source.includes('Demo data') ? ds : null;
+      const merged = base ? mergeDatasets(base, dataset) : dataset;
+      deriveSkinTempDelta(merged);
+      commit(merged);
+      setSettings({ ...settings, googleLastSync: new Date().toISOString() });
+      setSync({ busy: false, done: 0, total: 0, label: '', report });
+    } catch (e) {
+      let msg = (e as Error).message;
+      if (e instanceof ApiError && e.status === 403) msg = `Google refused access (${msg}). Check that the Google Health API is enabled, your account is a test user, and you ticked all permissions on the consent screen.`;
+      if (e instanceof ApiError && e.status === 401) msg = 'Your Google session expired — click Sync again.';
+      setSync({ busy: false, done: 0, total: 0, label: '', error: msg });
+    }
+  };
+
+  const disconnect = () => {
+    signOut();
+    setSettings({ ...settings, googleLastSync: undefined });
+  };
+
   if (!loaded) return <div className="splash">Loading…</div>;
 
   const current = ds ? view : 'import';
@@ -135,6 +186,9 @@ export default function App() {
             onImported={(d, merge) => { commit(merge && ds ? mergeDatasets(ds, d) : d); goto('overview'); }}
             onDemo={() => { commit(makeDemo()); goto('overview'); }}
             onClear={() => { clearDataset(); setDs(null); }}
+            sync={sync}
+            onSync={runSync}
+            onDisconnect={disconnect}
           />
         );
       default: return <Overview />;
@@ -162,6 +216,11 @@ export default function App() {
           <header className="top">
             <button className="menu" aria-label="Menu" onClick={() => setNavOpen(!navOpen)}>☰</button>
             <h1>{title}</h1>
+            {settings.googleClientId && (ds?.source.includes('Google Health (live)') || settings.googleLastSync) && (
+              <button className="sync-btn" onClick={() => runSync()} disabled={sync.busy} title={settings.googleLastSync ? `Last synced ${new Date(settings.googleLastSync).toLocaleString()}` : 'Sync with Google Health'}>
+                <span className={sync.busy ? 'spin' : ''} aria-hidden>⟳</span> {sync.busy ? `Syncing ${sync.total ? Math.round((sync.done / sync.total) * 100) + '%' : '…'}` : 'Sync'}
+              </button>
+            )}
             {ds && current !== 'import' && current !== 'compare' && (
               <div className="range">
                 <div className="seg">
@@ -177,6 +236,7 @@ export default function App() {
               </div>
             )}
           </header>
+          {sync.error && current !== 'import' && <div className="banner error-banner">Sync failed: {sync.error} <button className="link" onClick={() => setSync({ ...sync, error: undefined })}>Dismiss</button></div>}
           {ds?.source.includes('Demo data') && current !== 'import' && (
             <div className="banner">You're viewing <b>synthetic demo data</b>. <button className="link" onClick={() => goto('import')}>Import your own Fitbit export →</button></div>
           )}

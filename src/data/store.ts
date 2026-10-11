@@ -4,7 +4,14 @@ import type { Dataset, Settings } from './types';
 const DS_KEY = 'pulse-lab:dataset';
 const SETTINGS_KEY = 'pulse-lab:settings';
 
-export const defaultSettings: Settings = { age: 35, intradayOffsetHours: 0, theme: 'system' };
+export const defaultSettings: Settings = {
+  age: 35,
+  intradayOffsetHours: 0,
+  theme: 'system',
+  // OAuth client IDs are public identifiers, not secrets.
+  googleClientId: '901994183920-krn7o3piskk4h7j34cul5sf98j1vp109.apps.googleusercontent.com',
+  googleFirstSyncDays: 90,
+};
 
 export async function loadDataset(): Promise<Dataset | null> {
   try {

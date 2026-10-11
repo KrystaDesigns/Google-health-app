@@ -21,7 +21,31 @@ browser, and data is stored locally in IndexedDB.
 | **Compare** | Any two periods, weekend vs weekday, workout vs rest days, or after ≥7 h sleep vs less — Welch t-test + Cohen's d for every metric |
 | **Data table** | Every daily metric in one table, CSV export |
 
-## Getting your data
+## Live sync (Google Health API)
+
+Pulse Lab can pull your data directly from your Google account using the
+[Google Health API](https://developers.google.com/health) (the replacement for
+the Fitbit Web API, which shuts down on 30 Oct 2026). It runs entirely in the
+browser with read-only scopes — no server, no client secret.
+
+Open **Import & settings → Live sync with Google Health → Connect & sync**,
+approve the permissions, and pick how many days to backfill (30–365). After
+that, the **⟳ Sync** button in the header fetches anything new.
+
+Synced: steps, distance, calories, active minutes, Active Zone Minutes, daily &
+5-minute heart rate, hourly steps, resting HR, HRV, breathing rate, SpO₂, skin
+temperature, sleep sessions with stages, exercises and weight.
+
+Setup (one-time, in Google Cloud Console → Google Auth Platform): enable the
+Google Health API; keep the app in **Testing** with your account as a test
+user; add the `googlehealth.activity_and_fitness.readonly`,
+`googlehealth.health_metrics_and_measurements.readonly` and
+`googlehealth.sleep.readonly` scopes; create a **Web application** OAuth client
+with your site's origin (e.g. `https://<user>.github.io`, `http://localhost:5173`)
+as an authorized JavaScript origin. Paste its client ID under *Advanced* if you
+fork this project.
+
+## Getting your data from Takeout
 
 1. Open <https://takeout.google.com> with the Google account linked to your Fitbit.
 2. *Deselect all* → tick **Fitbit** → *Export once* as **.zip**.

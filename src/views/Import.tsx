@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import type { Dataset, Settings } from '../data/types';
 import type { WorkerOut } from '../data/import.worker';
 import type { ParseReport } from '../data/takeout';
-import { Card } from '../components/ui';
+import { Card, Seg } from '../components/ui';
+import type { SyncState } from '../App';
 
 interface Props {
   ds: Dataset | null;
@@ -11,9 +12,12 @@ interface Props {
   onImported: (ds: Dataset, merge: boolean) => void;
   onDemo: () => void;
   onClear: () => void;
+  sync: SyncState;
+  onSync: (full?: boolean) => void;
+  onDisconnect: () => void;
 }
 
-export function Import({ ds, settings, setSettings, onImported, onDemo, onClear }: Props) {
+export function Import({ ds, settings, setSettings, onImported, onDemo, onClear, sync, onSync, onDisconnect }: Props) {
   const [busy, setBusy] = useState<{ done: number; total: number; label: string } | null>(null);
   const [report, setReport] = useState<ParseReport | null>(null);
   const [error, setError] = useState('');
@@ -47,9 +51,57 @@ export function Import({ ds, settings, setSettings, onImported, onDemo, onClear 
     w.postMessage({ files: files.map((f) => ({ file: f, path: (f as any).webkitRelativePath || f.name })), intradayOffsetHours: settings.intradayOffsetHours });
   };
 
+  const connected = !!settings.googleLastSync;
+  const liveCard = (
+    <Card
+      title="Live sync with Google Health"
+      sub="Pull your latest Fitbit Air data straight from your Google account. Read-only; data goes from Google to this browser only."
+      span={3}
+    >
+      <div className="gh-status">
+        <span className={`dot ${connected ? 'on' : ''}`} aria-hidden />
+        {connected ? <>Connected · last synced {new Date(settings.googleLastSync!).toLocaleString()}</> : <>Not connected yet</>}
+      </div>
+      <div className="row">
+        <button className="primary" onClick={() => onSync()} disabled={sync.busy || !settings.googleClientId}>
+          {sync.busy ? 'Syncing…' : connected ? 'Sync now' : 'Connect & sync'}
+        </button>
+        {connected && <button onClick={() => onSync(true)} disabled={sync.busy}>Re-sync full history window</button>}
+        {connected && <button className="danger" onClick={onDisconnect} disabled={sync.busy}>Disconnect</button>}
+      </div>
+      {!connected && (
+        <div className="row" style={{ marginTop: 12 }}>
+          <span className="muted small">First sync covers the last</span>
+          <Seg value={settings.googleFirstSyncDays} onChange={(v) => setSettings({ ...settings, googleFirstSyncDays: v })} options={[30, 90, 180, 365].map((v) => ({ v, l: `${v} days` }))} />
+        </div>
+      )}
+      {sync.busy && (
+        <div className="progress">
+          <div className="bar"><div style={{ width: `${(sync.done / Math.max(1, sync.total)) * 100}%` }} /></div>
+          <span className="muted small">{sync.done} / {sync.total} · {sync.label}</span>
+        </div>
+      )}
+      {sync.error && <p className="error">{sync.error}</p>}
+      {sync.report && (
+        <p className="muted small">
+          Synced: {sync.report.ok.join(', ') || 'nothing'}.
+          {sync.report.failed.length > 0 && <> Unavailable: {sync.report.failed.map((f) => `${f.what} (${f.error})`).join('; ')}.</>}
+        </p>
+      )}
+      <details className="small" style={{ marginTop: 10 }}>
+        <summary className="muted">Advanced: OAuth client ID</summary>
+        <div className="form" style={{ marginTop: 8 }}>
+          <input className="wide" value={settings.googleClientId} onChange={(e) => setSettings({ ...settings, googleClientId: e.target.value.trim() })} />
+          <span className="muted">Google shows an "unverified app" warning because this is your personal test app — click <b>Continue</b>. Sign-ins last about an hour; just click Sync again after that.</span>
+        </div>
+      </details>
+    </Card>
+  );
+
   return (
     <div className="grid">
-      <Card title="Import your Fitbit data" sub="Everything is processed locally in your browser. Nothing is uploaded anywhere." span={2}>
+      {liveCard}
+      <Card title="Or import a Google Takeout export" sub="Full history including minute-level data. Processed locally in your browser; nothing is uploaded." span={2}>
         <div
           className={`drop ${drag ? 'over' : ''}`}
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}

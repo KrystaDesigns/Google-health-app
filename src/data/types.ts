@@ -87,6 +87,9 @@ export interface Settings {
   age: number;
   intradayOffsetHours: number; // shift applied to minute-level UTC timestamps
   theme: 'system' | 'light' | 'dark';
+  googleClientId: string;
+  googleLastSync?: string; // ISO timestamp of last successful live sync
+  googleFirstSyncDays: number;
 }
 
 export const emptyDataset = (): Dataset => ({
