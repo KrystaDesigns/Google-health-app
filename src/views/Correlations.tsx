@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../state';
 import { Card, Empty, MetricSelect, Seg, Stat } from '../components/ui';
 import { Chart } from '../components/Chart';
-import { METRICS, META, fmtMetric } from '../data/metrics';
+import { METRICS, META, fmtMetric, lowerLabel } from '../data/metrics';
 import type { NumericKey } from '../data/types';
 import { addDays, linreg, pearson } from '../lib/stats';
 import { fmtAxis } from '../components/charts';
@@ -101,7 +101,7 @@ export function Correlations() {
           {top.map((c) => (
             <li key={`${c.a}${c.b}${c.lag}`} onClick={() => { setX(c.a); setY(c.b); setLag(c.lag); }}>
               <span className={`r ${c.r > 0 ? 'pos' : 'neg'}`}>{c.r > 0 ? '+' : ''}{c.r.toFixed(2)}</span>
-              <span>{META[c.a].label} → {c.lag ? 'next-day ' : ''}{META[c.b].label.toLowerCase()}</span>
+              <span>{META[c.a].label} → {c.lag ? 'next-day ' : ''}{lowerLabel(META[c.b].label)}</span>
             </li>
           ))}
           {!top.length && <li className="muted">No strong relationships found in this range.</li>}

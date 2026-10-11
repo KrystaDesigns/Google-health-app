@@ -1,7 +1,7 @@
 import type { EChartsOption } from 'echarts';
 import type { DailyRecord, NumericKey } from '../data/types';
 import { META, fmtMetric } from '../data/metrics';
-import { rolling, rollingSd, mean } from '../lib/stats';
+import { rolling, mean } from '../lib/stats';
 import type { Tokens } from './theme';
 
 const axisTooltip = { trigger: 'axis' as const, axisPointer: { type: 'line' as const } };
@@ -9,7 +9,7 @@ const axisTooltip = { trigger: 'axis' as const, axisPointer: { type: 'line' as c
 export const fmtAxis = (k: NumericKey) => (v: number) =>
   META[k]?.unit === 'clock' ? fmtMetric(k, v) : Math.abs(v) >= 10000 ? `${+(v / 1000).toFixed(1)}k` : String(+v.toFixed(Math.min(2, META[k]?.decimals ?? 2)));
 
-/** Daily values + 7-day and 28-day rolling means, optional ±1σ band & goal line. */
+/** Daily values + 7-day and 28-day rolling means, optional personal-normal-range band & goal line. */
 export function trendOption(t: Tokens, days: DailyRecord[], k: NumericKey, opts: { bars?: boolean; band?: boolean; goal?: number; markDates?: string[] } = {}): EChartsOption {
   const x = days.map((d) => d.date);
   const y = days.map((d) => d[k] ?? null);
@@ -17,12 +17,26 @@ export function trendOption(t: Tokens, days: DailyRecord[], k: NumericKey, opts:
   const r28 = rolling(y, 28, 10);
   const series: any[] = [];
   if (opts.band) {
-    const s28 = rollingSd(y, 28);
-    const lo = r28.map((m, i) => (m != null && s28[i] != null ? m - s28[i]! : null));
-    const width = r28.map((m, i) => (m != null && s28[i] != null ? 2 * s28[i]! : null));
+    // "Your normal range": median ± 2·MAD of the previous 60 days (robust to outliers)
+    const lo: (number | null)[] = [];
+    const width: (number | null)[] = [];
+    for (let i = 0; i < y.length; i++) {
+      const prior = y.slice(Math.max(0, i - 60), i).filter((v): v is number => v != null);
+      if (prior.length < 14) {
+        lo.push(null);
+        width.push(null);
+        continue;
+      }
+      const sorted = [...prior].sort((a, b) => a - b);
+      const med = sorted[Math.floor(sorted.length / 2)];
+      const dev = prior.map((v) => Math.abs(v - med)).sort((a, b) => a - b);
+      const spread = Math.max(2 * 1.4826 * dev[Math.floor(dev.length / 2)], Math.abs(med) * 0.02);
+      lo.push(med - spread);
+      width.push(2 * spread);
+    }
     series.push(
-      { name: 'band-lo', type: 'line', data: lo, itemStyle: { color: t.series[0] }, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, tooltip: { show: false }, silent: true },
-      { name: '±1σ (28d)', type: 'line', data: width, itemStyle: { color: t.seq[t.dark ? 2 : 1] }, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, areaStyle: { color: t.series[0], opacity: 0.1 }, tooltip: { show: false }, silent: true },
+      { name: 'band-lo', type: 'line', data: lo, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, itemStyle: { color: t.series[0] }, tooltip: { show: false }, silent: true },
+      { name: 'Your normal range', type: 'line', data: width, stack: 'band', symbol: 'none', lineStyle: { opacity: 0 }, itemStyle: { color: t.seq[t.dark ? 2 : 1] }, areaStyle: { color: t.series[0], opacity: 0.1 }, tooltip: { show: false }, silent: true },
     );
   }
   series.push(
@@ -37,11 +51,11 @@ export function trendOption(t: Tokens, days: DailyRecord[], k: NumericKey, opts:
   for (const d of opts.markDates ?? []) lines.push({ xAxis: d, lineStyle: { color: t.critical, type: 'solid', width: 1, opacity: 0.5 }, label: { show: false } });
   if (lines.length) series[series.length - 3].markLine = { symbol: 'none', silent: true, data: lines };
   return {
-    legend: { data: [META[k].label, '7-day avg', '28-day avg', ...(opts.band ? ['±1σ (28d)'] : [])] },
+    legend: { data: [META[k].label, '7-day avg', '28-day avg', ...(opts.band ? ['Your normal range'] : [])] },
     tooltip: {
       ...axisTooltip,
       formatter: (ps: any) => {
-        const arr = (Array.isArray(ps) ? ps : [ps]).filter((p: any) => !String(p.seriesName).startsWith('band') && p.seriesName !== '±1σ (28d)');
+        const arr = (Array.isArray(ps) ? ps : [ps]).filter((p: any) => !String(p.seriesName).startsWith('band') && p.seriesName !== 'Your normal range');
         return `<b>${arr[0]?.axisValue}</b><br/>` + arr.map((p: any) => `${p.marker} ${p.seriesName}: <b>${fmtMetric(k, p.value)}</b>`).join('<br/>');
       },
     },

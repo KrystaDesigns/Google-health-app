@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Dataset, Settings } from './data/types';
 import { clearDataset, loadDataset, loadSettings, saveDataset, saveSettings } from './data/store';
 import { makeDemo } from './data/demo';
+import type { Journal } from './data/types';
+import { emptyJournal, loadJournal, saveJournal } from './data/store';
+import { loadSeries } from './lib/training';
+import { Journal as JournalView } from './views/Journal';
+import { Training } from './views/Training';
+import { Goals } from './views/Goals';
+import { Report } from './views/Report';
 import { mergeDatasets } from './data/derive';
 import { AppCtx, boundsOf, denseDays, type Range } from './state';
 import { addDays, daysBetween } from './lib/stats';
@@ -33,7 +40,11 @@ export interface SyncState {
 const VIEWS = [
   { id: 'overview', label: 'Overview', icon: '◎' },
   { id: 'insights', label: 'Insights', icon: '✦' },
+  { id: 'report', label: 'Weekly report', icon: '▤' },
+  { id: 'goals', label: 'Goals', icon: '◉' },
+  { id: 'journal', label: 'Journal', icon: '✎' },
   { id: 'activity', label: 'Activity', icon: '↗' },
+  { id: 'training', label: 'Training load', icon: '⚡' },
   { id: 'heart', label: 'Heart', icon: '♥' },
   { id: 'sleep', label: 'Sleep', icon: '☾' },
   { id: 'recovery', label: 'Recovery', icon: '↻' },
@@ -63,9 +74,15 @@ export default function App() {
   const [range, setRange] = useState<Range | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  const [journal, setJournalState] = useState<Journal>(emptyJournal);
+  const setJournal = (j: Journal) => {
+    setJournalState(j);
+    saveJournal(j);
+  };
   const [sync, setSync] = useState<SyncState>({ busy: false, done: 0, total: 0, label: '' });
 
   useEffect(() => {
+    loadJournal().then(setJournalState);
     loadDataset().then((d) => {
       setDs(d);
       setLoaded(true);
@@ -107,7 +124,14 @@ export default function App() {
     setRange({ from: from < bounds.min ? bounds.min : from, to: bounds.max, preset: id });
   };
 
-  const days = useMemo(() => (ds ? denseDays(ds, effRange.from, effRange.to) : []), [ds, effRange]);
+  // Training load is derived for every day, then exposed like any other metric.
+  const load = useMemo(() => {
+    if (!ds) return [];
+    const series = loadSeries(ds, settings.age);
+    for (const p of series) if (p.load != null && ds.days[p.date]) ds.days[p.date].trainingLoad = p.load;
+    return series;
+  }, [ds, settings.age]);
+  const days = useMemo(() => (ds ? denseDays(ds, effRange.from, effRange.to) : []), [ds, effRange, load]);
   const prevDays = useMemo(() => {
     if (!ds) return [];
     const n = daysBetween(effRange.from, effRange.to) + 1;
@@ -121,6 +145,8 @@ export default function App() {
   };
 
   const commit = (next: Dataset) => {
+    // A demo journal must not leak into real data.
+    if (journal.demo && !next.source.includes('Demo data')) setJournal(emptyJournal());
     setDs(next);
     saveDataset(next);
     setRange(null);
@@ -134,7 +160,7 @@ export default function App() {
     }
     setSync({ busy: true, done: 0, total: 0, label: 'Signing in…' });
     try {
-      await signIn(settings.googleClientId);
+      await signIn(settings.googleClientId, !!settings.googleExtraScopes);
       const today = new Date();
       const to = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       const live = ds?.source.includes('Google Health (live)');
@@ -142,7 +168,7 @@ export default function App() {
       const from = !full && live && settings.googleLastSync
         ? addDays(settings.googleLastSync.slice(0, 10), -2)
         : addDays(to, -(settings.googleFirstSyncDays - 1));
-      const { dataset, report } = await syncRange(from, to, (done, total, label) => setSync((s) => ({ ...s, done, total, label })));
+      const { dataset, report } = await syncRange(from, to, (done, total, label) => setSync((s) => ({ ...s, done, total, label })), { extra: !!settings.googleExtraScopes });
       if (!Object.keys(dataset.days).length && report.failed.length) throw new Error(report.failed[0].error);
       const base = ds && !ds.source.includes('Demo data') ? ds : null;
       const merged = base ? mergeDatasets(base, dataset) : dataset;
@@ -177,6 +203,10 @@ export default function App() {
       case 'compare': return <Compare />;
       case 'insights': return <Insights />;
       case 'data': return <DataView />;
+      case 'journal': return <JournalView />;
+      case 'training': return <Training />;
+      case 'goals': return <Goals />;
+      case 'report': return <Report />;
       case 'import':
         return (
           <Import
@@ -184,7 +214,7 @@ export default function App() {
             settings={settings}
             setSettings={setSettings}
             onImported={(d, merge) => { commit(merge && ds ? mergeDatasets(ds, d) : d); goto('overview'); }}
-            onDemo={() => { commit(makeDemo()); goto('overview'); }}
+            onDemo={() => { const { ds: demo, journal: dj } = makeDemo(); commit(demo); if (journal.demo || !Object.keys(journal.entries).length) setJournal(dj); goto('overview'); }}
             onClear={() => { clearDataset(); setDs(null); }}
             sync={sync}
             onSync={runSync}
@@ -241,7 +271,7 @@ export default function App() {
             <div className="banner">You're viewing <b>synthetic demo data</b>. <button className="link" onClick={() => goto('import')}>Import your own Fitbit export →</button></div>
           )}
           {ds ? (
-            <AppCtx.Provider value={{ ds, settings, setSettings, range: effRange, setRange, days, prevDays, bounds, goto }}>
+            <AppCtx.Provider value={{ ds, settings, setSettings, range: effRange, setRange, days, prevDays, bounds, goto, journal, setJournal, load, today: bounds.max }}>
               <ErrorBoundary resetKey={current}>{page}</ErrorBoundary>
             </AppCtx.Provider>
           ) : page}

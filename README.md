@@ -10,12 +10,16 @@ browser, and data is stored locally in IndexedDB.
 
 | View | Highlights |
 |---|---|
+| **Journal** | Tag your days (alcohol, late caffeine, stress, meditation… or your own tags). Pulse Lab compares that night's sleep and next-morning recovery with vs without each tag (Welch t-test, effect sizes) — *what actually works for you* |
+| **Training load** | TRIMP from 5-minute heart rate, fitness (CTL) vs fatigue (ATL), form (TSB), acute:chronic workload ratio, and a daily push / maintain / recover call |
+| **Goals** | Daily goals with streaks and 14-day history; weekly/monthly totals with pace forecasts ("at this pace…") |
+| **Weekly report** | One page: week vs last week, wins, watch-outs, pattern of the week, journal finding, focus for next week. Print / save as PDF |
 | **Overview** | KPI tiles with change vs the previous period, top auto-insights, trend explorer with 7/28-day rolling means and a ±1σ band, calendar heatmap for any metric, data-coverage check |
 | **Insights** | Significant trends (regression + p-value), strain/possible-illness detector (RHR↑ + HRV↓ + skin temp↑ vs your own 30-day baseline), weekday rhythm, sleep regularity & social jetlag, streaks, sleep debt, personal records |
 | **Activity** | Daily steps vs goal, hour × weekday heatmap, weekday box plots, weekly intensity mix, distribution |
 | **Heart** | Resting HR with strain flags, heart-rate "fingerprint" (every day × every 30 min), intraday HR with zone bands + hourly steps, time in zones, daily HR rhythm, HRV |
-| **Sleep** | Sleep schedule (bedtime→wake bars), stages per night, composition, hypnogram per night, cumulative sleep debt, weekday pattern, sleep score |
-| **Recovery** | Readiness, HRV, skin-temperature deviation, SpO₂, breathing rate, stress management |
+| **Sleep** | Chronotype (MCTQ-style) and your best bedtime window, sleep schedule (bedtime→wake bars), stages per night, composition, hypnogram per night, cumulative sleep debt, weekday pattern, sleep score |
+| **Recovery** | Readiness, HRV & deep-sleep HRV, VO₂ max, skin-temperature deviation, SpO₂, breathing rate, stress, body composition, water/food; cycle-aware view of temperature, RHR and HRV when menstrual data is synced |
 | **Workouts** | Weekly training volume, per-activity summary, intensity vs duration scatter, full log |
 | **Correlation lab** | Full correlation matrix, scatter explorer with regression, r, p and lagged (next-day / +2 days) effects, ranked strongest relationships |
 | **Compare** | Any two periods, weekend vs weekday, workout vs rest days, or after ≥7 h sleep vs less — Welch t-test + Cohen's d for every metric |
@@ -32,7 +36,7 @@ Open **Import & settings → Live sync with Google Health → Connect & sync**,
 approve the permissions, and pick how many days to backfill (30–365). After
 that, the **⟳ Sync** button in the header fetches anything new.
 
-Synced: steps, distance, calories, active minutes, Active Zone Minutes, daily &
+Synced: steps, distance, calories, floors, sedentary time, time in heart-rate zones, VO₂ max, body fat, water and food logs, active minutes, Active Zone Minutes, daily &
 5-minute heart rate, hourly steps, resting HR, HRV, breathing rate, SpO₂, skin
 temperature, sleep sessions with stages, exercises and weight.
 
@@ -81,3 +85,10 @@ Statistics (rolling stats, Pearson r with p-values, OLS, Welch's t-test) are
 implemented in `src/lib/stats.ts`.
 
 *Pulse Lab is not a medical device; insights are statistical patterns, not diagnoses.*
+
+Charts show **your normal range** (median ± 2·MAD of your previous 60 days), and the
+Overview flags metrics that stay outside it for 2+ days.
+
+Optional: tick *Also sync menstrual cycle, moods & symptoms* and add the
+`googlehealth.reproductive_health.readonly` and `googlehealth.logged_symptoms.readonly`
+scopes in Google Cloud. Logged moods/symptoms appear as journal tags automatically.

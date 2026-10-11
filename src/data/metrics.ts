@@ -37,7 +37,19 @@ export const METRICS: MetricMeta[] = [
   { key: 'wakeMin', label: 'Awake in bed', unit: 'min', group: 'Sleep', decimals: 0, better: -1 },
   { key: 'bedtime', label: 'Bedtime', unit: 'clock', group: 'Sleep', decimals: 0, better: 0 },
   { key: 'waketime', label: 'Wake time', unit: 'clock', group: 'Sleep', decimals: 0, better: 0 },
+  { key: 'outOfBedMin', label: 'Out of bed (night)', unit: 'min', group: 'Sleep', decimals: 0, better: -1 },
+  { key: 'floors', label: 'Floors', unit: '', group: 'Activity', decimals: 0, better: 1 },
+  { key: 'sedentaryHours', label: 'Sedentary time', unit: 'h', group: 'Activity', decimals: 1, better: -1 },
+  { key: 'zoneModerateMin', label: 'Moderate HR zone', unit: 'min', group: 'Activity', decimals: 0, better: 1 },
+  { key: 'zoneVigorousMin', label: 'Vigorous HR zone', unit: 'min', group: 'Activity', decimals: 0, better: 1 },
+  { key: 'zonePeakMin', label: 'Peak HR zone', unit: 'min', group: 'Activity', decimals: 0, better: 0 },
+  { key: 'trainingLoad', label: 'Training load', unit: '', group: 'Activity', decimals: 0, better: 0 },
+  { key: 'vo2max', label: 'VO₂ max', unit: 'ml/kg/min', group: 'Heart', decimals: 1, better: 1 },
+  { key: 'hrvDeep', label: 'Deep-sleep HRV', unit: 'ms', group: 'Recovery', decimals: 1, better: 1 },
   { key: 'weightKg', label: 'Weight', unit: 'kg', group: 'Body', decimals: 1, better: 0 },
+  { key: 'bodyFat', label: 'Body fat', unit: '%', group: 'Body', decimals: 1, better: -1 },
+  { key: 'hydrationMl', label: 'Water', unit: 'ml', group: 'Body', decimals: 0, better: 1 },
+  { key: 'caloriesIn', label: 'Calories eaten', unit: 'kcal', group: 'Body', decimals: 0, better: 0 },
 ];
 
 export const META: Record<string, MetricMeta> = Object.fromEntries(METRICS.map((m) => [m.key, m]));
@@ -61,4 +73,12 @@ export function fmtMetric(key: string, v: number | null | undefined, withUnit = 
   if (key === 'sleepMin' || key === 'deepMin' || key === 'remMin' || key === 'lightSleepMin') return fmtDuration(v);
   const s = v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: m.decimals });
   return withUnit && m.unit ? `${s} ${m.unit}` : s;
+}
+
+/** Lower-case a label for use mid-sentence, keeping acronyms (HRV, REM, SpO₂, VO₂) intact. */
+export function lowerLabel(label: string): string {
+  return label
+    .split(' ')
+    .map((w) => (/[A-Z].*[A-Z₂]|^[A-Z][a-z]*[A-Z₂]/.test(w) || /^\(?[A-Z]{2,}/.test(w) ? w : w.toLowerCase()))
+    .join(' ');
 }

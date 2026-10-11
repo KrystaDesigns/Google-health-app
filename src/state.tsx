@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
-import type { DailyRecord, Dataset, NumericKey, Settings } from './data/types';
+import type { DailyRecord, Dataset, Journal, NumericKey, Settings } from './data/types';
+import type { LoadPoint } from './lib/training';
 import { dateRange } from './lib/stats';
 
 export interface Range {
@@ -20,6 +21,12 @@ export interface AppState {
   prevDays: DailyRecord[];
   bounds: { min: string; max: string };
   goto: (view: string, arg?: string) => void;
+  journal: Journal;
+  setJournal: (j: Journal) => void;
+  /** fitness-fatigue series across the whole dataset */
+  load: LoadPoint[];
+  /** latest date that has any data */
+  today: string;
 }
 
 export const AppCtx = createContext<AppState>(null as unknown as AppState);

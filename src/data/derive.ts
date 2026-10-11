@@ -21,6 +21,7 @@ export function applySleepToDays(ds: Dataset) {
     const d = day(ds, date);
     d.sleepMin = sessions.reduce((a, s) => a + s.minutesAsleep, 0);
     d.timeInBedMin = main.timeInBed;
+    if (main.outOfBedMin != null) d.outOfBedMin = main.outOfBedMin;
     d.sleepEfficiency = main.efficiency ?? (main.timeInBed ? (100 * main.minutesAsleep) / main.timeInBed : undefined);
     if (main.stages) {
       d.deepMin = main.stages.deep;
@@ -65,6 +66,7 @@ export function mergeDatasets(a: Dataset, b: Dataset): Dataset {
     sleep: [...a.sleep.filter((s) => !sleepIds.has(s.id)), ...b.sleep].sort((x, y) => x.start.localeCompare(y.start)),
     workouts: [...a.workouts.filter((w) => !woIds.has(w.id)), ...b.workouts].sort((x, y) => x.start.localeCompare(y.start)),
     intraday,
+    logged: { ...(a.logged ?? {}), ...(b.logged ?? {}) },
   };
 }
 

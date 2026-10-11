@@ -88,6 +88,10 @@ export function Import({ ds, settings, setSettings, onImported, onDemo, onClear,
           {sync.report.failed.length > 0 && <> Unavailable: {sync.report.failed.map((f) => `${f.what} (${f.error})`).join('; ')}.</>}
         </p>
       )}
+      <label className="check">
+        <input type="checkbox" checked={!!settings.googleExtraScopes} onChange={(e) => setSettings({ ...settings, googleExtraScopes: e.target.checked })} />
+        Also sync menstrual cycle, moods &amp; symptoms <span className="muted small">(first add the <code>reproductive_health.readonly</code> and <code>logged_symptoms.readonly</code> scopes in Google Cloud → Data access)</span>
+      </label>
       <details className="small" style={{ marginTop: 10 }}>
         <summary className="muted">Advanced: OAuth client ID</summary>
         <div className="form" style={{ marginTop: 8 }}>

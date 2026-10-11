@@ -1,9 +1,11 @@
 /**
  * Deterministic synthetic year of tracker data with realistic structure:
  * weekly rhythm, seasonal drift, activity→sleep→recovery coupling, a fitness
- * block, and two short illness episodes (RHR↑, HRV↓, skin temp↑).
+ * block, two short illness episodes (RHR↑, HRV↓, skin temp↑), and a habit
+ * journal whose tags genuinely shift that night's sleep and next-day recovery.
  */
-import type { Dataset, SleepLevel, SleepSession, Workout } from './types';
+import type { Dataset, Journal, SleepLevel, SleepSession, Workout } from './types';
+import { DEFAULT_TAGS } from '../lib/journal';
 import { emptyDataset } from './types';
 import { addDays, weekday } from '../lib/stats';
 import { applySleepToDays, deriveSkinTempDelta } from './derive';
@@ -17,7 +19,7 @@ function rng(seed: number) {
   };
 }
 
-export function makeDemo(days = 365): Dataset {
+export function makeDemo(days = 365): { ds: Dataset; journal: Journal } {
   const r = rng(42);
   const gauss = () => {
     let u = 0;
@@ -34,6 +36,8 @@ export function makeDemo(days = 365): Dataset {
   const start = addDays(end, -days + 1);
   const illness = [Math.floor(days * 0.3), Math.floor(days * 0.78)];
   let prevSleep = 440;
+  let prevTags: string[] = [];
+  const journal: Journal = { tags: [...DEFAULT_TAGS], entries: {}, demo: true };
   let fitness = 0;
 
   for (let i = 0; i < days; i++) {
@@ -55,21 +59,33 @@ export function makeDemo(days = 365): Dataset {
     const sedentary = Math.round(clamp(1440 - light - moderate - very - prevSleep, 300, 1100));
     const stride = 0.74 + gauss() * 0.01;
 
+    // ---- habit effects from yesterday's journal on tonight's sleep / tomorrow's recovery
+    const has = (t: string) => prevTags.includes(t);
+    const fx = {
+      bed: (has('Caffeine after 2pm') ? 25 : 0) + (has('Screens in bed') ? 20 : 0),
+      sleep: (has('Caffeine after 2pm') ? -25 : 0) + (has('Screens in bed') ? -15 : 0) + (has('Stressful day') ? -15 : 0),
+      deep: (has('Alcohol') ? -14 : 0) + (has('Late meal') ? -6 : 0) + (has('Stretching / yoga') ? 5 : 0),
+      rem: has('Alcohol') ? -10 : 0,
+      wake: (has('Alcohol') ? 8 : 0) + (has('Meditation') ? -5 : 0),
+      rhr: (has('Alcohol') ? 2.5 : 0) + (has('Late meal') ? 1.2 : 0),
+      hrv: (has('Alcohol') ? -7 : 0) + (has('Stressful day') ? -4 : 0) + (has('Meditation') ? 3 : 0),
+    };
+
     // ---- sleep for night ending on `date`
     const bedBase = weekend || wd === 4 ? 23.9 * 60 : 23.05 * 60; // Fri/Sat night later
-    const bedtime = Math.round(bedBase + gauss() * 38 - 1440 + sick * 40 - (workoutDay ? 10 : 0)); // minutes rel. midnight
-    const sleepMin = Math.round(clamp(435 + (weekend ? 35 : 0) + gauss() * 42 + sick * 45 + fitness * 10, 260, 640));
-    const wake = Math.round(clamp(42 + gauss() * 14 + sick * 25, 10, 140));
-    const deep = Math.round(clamp(sleepMin * (0.16 + (steps - 8000) / 400000 + fitness * 0.02) + gauss() * 10, 25, 150));
-    const rem = Math.round(clamp(sleepMin * 0.22 + gauss() * 12 - sick * 15, 30, 160));
+    const bedtime = Math.round(bedBase + gauss() * 38 - 1440 + sick * 40 - (workoutDay ? 10 : 0) + fx.bed); // minutes rel. midnight
+    const sleepMin = Math.round(clamp(435 + (weekend ? 35 : 0) + gauss() * 42 + sick * 45 + fitness * 10 + fx.sleep, 260, 640));
+    const wake = Math.round(clamp(42 + gauss() * 14 + sick * 25 + fx.wake, 10, 140));
+    const deep = Math.round(clamp(sleepMin * (0.16 + (steps - 8000) / 400000 + fitness * 0.02) + gauss() * 10 + fx.deep, 25, 150));
+    const rem = Math.round(clamp(sleepMin * 0.22 + gauss() * 12 - sick * 15 + fx.rem, 30, 160));
     const lightSleep = sleepMin - deep - rem;
     const timeInBed = sleepMin + wake;
     const waketime = bedtime + timeInBed;
 
     // ---- recovery
     const sleepDebt = (440 - prevSleep) / 60;
-    const rhr = clamp(59 - fitness * 3.5 + sleepDebt * 0.6 + sick * 6.5 - season * 0.8 + gauss() * 1.1, 46, 80);
-    const hrv = clamp(42 + fitness * 6 - sleepDebt * 2 - sick * 14 + gauss() * 5, 12, 90);
+    const rhr = clamp(59 - fitness * 3.5 + sleepDebt * 0.6 + sick * 6.5 - season * 0.8 + gauss() * 1.1 + fx.rhr, 46, 80);
+    const hrv = clamp(42 + fitness * 6 - sleepDebt * 2 - sick * 14 + gauss() * 5 + fx.hrv, 12, 90);
     const skinTemp = 33.9 + sick * 0.9 + season * 0.15 + gauss() * 0.18;
     const spo2 = clamp(96.4 - sick * 1.2 + gauss() * 0.6, 90, 100);
     const br = clamp(14.6 + sick * 1.8 + gauss() * 0.5, 10, 22);
@@ -98,6 +114,17 @@ export function makeDemo(days = 365): Dataset {
       readiness,
       sleepScore,
       weightKg: r() < 0.4 ? +weight.toFixed(1) : undefined,
+      bodyFat: undefined,
+      vo2max: +(41 + fitness * 3.2 + season * 0.4 - sick * 0.8 + gauss() * 0.25).toFixed(1),
+      floors: Math.max(0, Math.round(9 + gauss() * 4 + (workoutDay ? 4 : 0))),
+      sedentaryHours: +(sedentary / 60).toFixed(1),
+      zoneLightMin: Math.round(light / 3),
+      zoneModerateMin: Math.round(moderate + very * 0.4),
+      zoneVigorousMin: Math.round(very * 0.5),
+      zonePeakMin: Math.round(very * 0.1),
+      hydrationMl: r() < 0.7 ? Math.round(clamp(1900 + gauss() * 450 + (workoutDay ? 400 : 0), 600, 4000)) : undefined,
+      hrvDeep: +(hrv * 1.18 + gauss() * 3).toFixed(1),
+      outOfBedMin: Math.round(clamp(gauss() * 4 + 3, 0, 30)),
     };
 
     // intraday
@@ -164,6 +191,20 @@ export function makeDemo(days = 365): Dataset {
     ds.sleep.push(session);
     prevSleep = sleepMin;
 
+    // ---- today's journal (only the last ~4 months were "logged")
+    const tags: string[] = [];
+    const maybe = (t: string, p: number) => r() < p && tags.push(t);
+    maybe('Alcohol', weekend || wd === 4 ? 0.4 : 0.08);
+    maybe('Caffeine after 2pm', weekend ? 0.1 : 0.22);
+    maybe('Late meal', 0.2);
+    maybe('Stressful day', weekend ? 0.05 : 0.28);
+    maybe('Screens in bed', 0.35);
+    maybe('Meditation', 0.25);
+    maybe('Stretching / yoga', workoutDay ? 0.35 : 0.12);
+    if (sick) tags.push('Sick');
+    if (i >= days - 120) journal.entries[date] = tags;
+    prevTags = tags;
+
     if (workoutDay) {
       const kinds = ['Run', 'Walk', 'Bike', 'Weights', 'Swim', 'Yoga'];
       const name = kinds[Math.floor(r() ** 1.6 * kinds.length)];
@@ -191,7 +232,8 @@ export function makeDemo(days = 365): Dataset {
       ds.workouts.push(w);
     }
   }
+  for (const d of Object.values(ds.days)) if (d.weightKg) d.bodyFat = +(21.5 + (d.weightKg - 72) * 0.6 + gauss() * 0.4).toFixed(1);
   applySleepToDays(ds);
   deriveSkinTempDelta(ds);
-  return ds;
+  return { ds, journal };
 }

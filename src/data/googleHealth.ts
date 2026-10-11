@@ -17,6 +17,11 @@ export const SCOPES = [
   'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
   'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
 ];
+/** Optional: menstrual cycle + logged moods/symptoms (must also be added in Google Cloud → Data access). */
+export const EXTRA_SCOPES = [
+  'https://www.googleapis.com/auth/googlehealth.reproductive_health.readonly',
+  'https://www.googleapis.com/auth/googlehealth.logged_symptoms.readonly',
+];
 
 // ---------------------------------------------------------------- auth
 
@@ -26,7 +31,7 @@ declare global {
   }
 }
 
-let token: { value: string; expires: number } | null = null;
+let token: { value: string; expires: number; scope?: string } | null = null;
 try {
   const saved = JSON.parse(sessionStorage.getItem('pulse-lab:gh-token') ?? 'null');
   if (saved && saved.expires > Date.now()) token = saved;
@@ -51,18 +56,19 @@ export function hasValidToken() {
 }
 
 /** Must be called from a click handler (opens Google's consent popup). */
-export async function signIn(clientId: string): Promise<string> {
-  if (hasValidToken()) return token!.value;
+export async function signIn(clientId: string, extra = false): Promise<string> {
+  const scope = (extra ? [...SCOPES, ...EXTRA_SCOPES] : SCOPES).join(' ');
+  if (hasValidToken() && (token!.scope ?? SCOPES.join(' ')) === scope) return token!.value;
   // Popups must open synchronously inside the click; GIS is preloaded on app start.
   if (!window.google?.accounts?.oauth2) await loadGis();
   return new Promise((resolve, reject) => {
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
-      scope: SCOPES.join(' '),
+      scope,
       include_granted_scopes: true,
       callback: (resp: any) => {
         if (resp.error) return reject(new Error(resp.error_description || resp.error));
-        token = { value: resp.access_token, expires: Date.now() + (resp.expires_in ?? 3600) * 1000 };
+        token = { value: resp.access_token, expires: Date.now() + (resp.expires_in ?? 3600) * 1000, scope };
         try {
           sessionStorage.setItem('pulse-lab:gh-token', JSON.stringify(token));
         } catch {
@@ -214,7 +220,7 @@ export interface SyncReport {
 type Progress = (done: number, total: number, label: string) => void;
 
 /** Fetch [from, to] (inclusive dates) into a fresh Dataset. */
-export async function syncRange(from: string, to: string, progress: Progress): Promise<{ dataset: Dataset; report: SyncReport }> {
+export async function syncRange(from: string, to: string, progress: Progress, opts: { extra?: boolean } = {}): Promise<{ dataset: Dataset; report: SyncReport }> {
   const ds = emptyDataset();
   ds.source = ['Google Health (live)'];
   const toExcl = addDays(to, 1);
@@ -264,6 +270,29 @@ export async function syncRange(from: string, to: string, progress: Progress): P
     day(ds, d).maxHr = n(h.beatsPerMinuteMax);
   });
 
+  rollupJob('Floors', 'floors', (d, p) => (day(ds, d).floors = n(p.floors?.countSum)));
+  rollupJob('Sedentary time', 'sedentary-period', (d, p) => {
+    const sec = seconds(p.sedentaryPeriod?.durationSum);
+    if (sec) day(ds, d).sedentaryHours = +(sec / 3600).toFixed(1);
+  });
+  rollupJob('Heart-rate zones', 'time-in-heart-rate-zone', (d, p) => {
+    for (const z of p.timeInHeartRateZone?.timeInHeartRateZones ?? []) {
+      const m = Math.round(seconds(z.duration) / 60);
+      if (z.heartRateZone === 'LIGHT') day(ds, d).zoneLightMin = m;
+      if (z.heartRateZone === 'MODERATE') day(ds, d).zoneModerateMin = m;
+      if (z.heartRateZone === 'VIGOROUS') day(ds, d).zoneVigorousMin = m;
+      if (z.heartRateZone === 'PEAK') day(ds, d).zonePeakMin = m;
+    }
+  });
+  rollupJob('Water', 'hydration-log', (d, p) => {
+    const ml = n(p.hydrationLog?.amountConsumed?.millilitersSum);
+    if (ml) day(ds, d).hydrationMl = Math.round(ml);
+  });
+  rollupJob('Food log', 'nutrition-log', (d, p) => {
+    const k = n(p.nutritionLog?.energy?.kcalSum);
+    if (k) day(ds, d).caloriesIn = Math.round(k);
+  });
+
   // Daily summaries (one data point per day)
   const daily = (what: string, type: string, apply: (p: any) => void) =>
     jobs.push({
@@ -283,6 +312,14 @@ export async function syncRange(from: string, to: string, progress: Progress): P
     const d = dateOf(x?.date);
     const v = n(x?.averageHeartRateVariabilityMilliseconds);
     if (d && v) day(ds, d).hrv = +v.toFixed(1);
+    const deep = n(x?.deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds);
+    if (d && deep) day(ds, d).hrvDeep = +deep.toFixed(1);
+  });
+  daily('VO₂ max', 'daily-vo2-max', (p) => {
+    const x = p.dailyVo2Max;
+    const d = dateOf(x?.date);
+    const v = n(x?.vo2Max);
+    if (d && v) day(ds, d).vo2max = +v.toFixed(1);
   });
   daily('SpO₂', 'daily-oxygen-saturation', (p) => {
     const x = p.dailyOxygenSaturation;
@@ -336,6 +373,49 @@ export async function syncRange(from: string, to: string, progress: Progress): P
       }
     },
   });
+
+  jobs.push({
+    what: 'Body fat',
+    run: async () => {
+      for (const p of await listAll('body-fat', `body_fat.sample_time.civil_time >= "${from}" AND body_fat.sample_time.civil_time < "${toExcl}"`)) {
+        const d = dateOf(p.bodyFat?.sampleTime?.civilTime?.date);
+        const v = n(p.bodyFat?.percentage);
+        if (d && v) day(ds, d).bodyFat = +v.toFixed(1);
+      }
+    },
+  });
+
+  if (opts.extra) {
+    jobs.push({
+      what: 'Menstrual cycle',
+      run: async () => {
+        // Look back further so the current cycle's start is known.
+        const back = addDays(from, -45);
+        for (const p of await listAll('menstrual-period', `menstrual_period.interval.civil_start_time >= "${back}" AND menstrual_period.interval.civil_start_time < "${toExcl}"`)) {
+          const iv = p.menstrualPeriod?.interval;
+          const s0 = dateOf(iv?.civilStartTime?.date);
+          if (!s0) continue;
+          const e0 = dateOf(iv?.civilEndTime?.date) ?? s0;
+          for (let d = s0; d <= e0 && d < toExcl; d = addDays(d, 1)) day(ds, d).period = 1;
+        }
+      },
+    });
+    const logged = (what: string, type: string, pick: (p: any) => { date: string | null; items: string[] }, prefix: string) =>
+      jobs.push({
+        what,
+        run: async () => {
+          const field = type.replace(/-/g, '_');
+          for (const p of await listAll(type, `${field}.sample_time.civil_time >= "${from}" AND ${field}.sample_time.civil_time < "${toExcl}"`)) {
+            const { date, items } = pick(p);
+            if (!date) continue;
+            const arr = ((ds.logged ??= {})[date] ??= []);
+            for (const it of items) if (it && !arr.includes(prefix + titleCase(it))) arr.push(prefix + titleCase(it));
+          }
+        },
+      });
+    logged('Moods', 'moods', (p) => ({ date: dateOf(p.moods?.sampleTime?.civilTime?.date), items: p.moods?.moods ?? [] }), 'Mood: ');
+    logged('Symptoms', 'symptoms', (p) => ({ date: dateOf(p.symptoms?.sampleTime?.civilTime?.date), items: p.symptoms?.symptoms ?? [] }), 'Symptom: ');
+  }
 
   // Intraday: 5-minute heart rate and hourly steps (14-day windows)
   c14.forEach(([s, e]) => {
@@ -408,7 +488,9 @@ function sleepFromApi(p: any): SleepSession | null {
   const inBed = n(sum.minutesInSleepPeriod) ?? Math.round((Date.parse(iv.endTime) - Date.parse(iv.startTime)) / 60000);
   const asleep = n(sum.minutesAsleep) ?? 0;
   const staged = s.type === 'STAGES' && byType.DEEP != null;
+  const outOfBed = (s.outOfBedSegments ?? []).reduce((a: number, o: any) => a + (Date.parse(o.endTime) - Date.parse(o.startTime)) / 60000, 0);
   return {
+    outOfBedMin: Math.round(outOfBed),
     id: p.name || iv.startTime,
     date: dateOf(iv.civilEndTime?.date) ?? end.slice(0, 10),
     start,

@@ -152,6 +152,12 @@ export function Heart() {
         </>
       )}
 
+      {days.some((d) => d.vo2max != null) && (
+        <Card title="Cardio fitness (VO₂ max)" sub="ml of oxygen per kg per minute. Each +1 is roughly a meaningful fitness gain; it moves slowly with consistent aerobic training." span={3}>
+          <Chart height={240} deps={[days]} option={(t) => trendOption(t, days, 'vo2max')} />
+        </Card>
+      )}
+
       <Card title="Heart-rate variability" sub="Nightly RMSSD — higher generally means better recovery" span={3}>
         <Chart height={280} deps={[days]} option={(t) => trendOption(t, days, 'hrv', { band: true })} />
       </Card>

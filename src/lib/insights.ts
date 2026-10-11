@@ -1,5 +1,5 @@
 import type { DailyRecord, Dataset, NumericKey } from '../data/types';
-import { META, fmtClock, fmtMetric } from '../data/metrics';
+import { META, fmtClock, fmtMetric, lowerLabel } from '../data/metrics';
 import { addDays, clean, daysBetween, linreg, mean, median, pearson, sd, weekday, WEEKDAYS } from './stats';
 
 export type Tone = 'good' | 'warning' | 'serious' | 'critical' | 'info';
@@ -163,7 +163,7 @@ export function buildInsights(ds: Dataset, days: DailyRecord[], goalSteps = 1000
       id: `corr-${a}-${b}-${lag}`,
       tone: 'info',
       title: label.replace('→', p.r > 0 ? '↗' : '↘'),
-      body: `${META[a].label} and ${lag ? 'next-day ' : ''}${META[b].label.toLowerCase()} are ${p.r > 0 ? 'positively' : 'negatively'} correlated (r = ${p.r.toFixed(2)}, p ${p.p < 0.001 ? '< 0.001' : '= ' + p.p.toFixed(3)}, n = ${p.n}).`,
+      body: `${META[a].label} and ${lag ? 'next-day ' : ''}${lowerLabel(META[b].label)} are ${p.r > 0 ? 'positively' : 'negatively'} correlated (r = ${p.r.toFixed(2)}, p ${p.p < 0.001 ? '< 0.001' : '= ' + p.p.toFixed(3)}, n = ${p.n}).`,
       metric: a,
       score: Math.abs(p.r) * 4,
     });

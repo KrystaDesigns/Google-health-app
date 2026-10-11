@@ -6,6 +6,7 @@ import { trendOption, weekdayBoxOption } from '../components/charts';
 import { clean, mean, median, sd, weekday } from '../lib/stats';
 import { fmtClock, fmtDuration, fmtMetric } from '../data/metrics';
 import type { SleepLevel } from '../data/types';
+import { bedtimeBins, chronotype } from '../lib/chronotype';
 
 const ORIGIN = 360; // chart minutes are measured from 18:00 the previous evening
 const STAGE_Y: Record<string, number> = { wake: 3, awake: 3, restless: 3, rem: 2, light: 1, asleep: 1, deep: 0 };
@@ -21,6 +22,8 @@ export function Sleep() {
   const [sel, setSel] = useState('');
   const night = sessions.find((s) => s.date === sel) ?? sessions[sessions.length - 1];
 
+  const chrono = useMemo(() => chronotype(days), [days]);
+  const bins = useMemo(() => bedtimeBins(days), [days]);
   if (!nights.length) return <Empty>No sleep data in this range.</Empty>;
 
   const beds = clean(col(days, 'bedtime'));
@@ -146,6 +149,29 @@ export function Sleep() {
           />
         </Card>
       )}
+
+      <Card title="Chronotype & ideal bedtime" sub="Your natural timing (from free-day sleep, corrected for catch-up sleep) and the bedtime window linked to your best nights" span={3}>
+        <div className="stats compact">
+          <Stat label="Chronotype" value={chrono ? chrono.type.split(' (')[0] : '–'} hint={chrono ? `free-day mid-sleep ${fmtClock(chrono.msfsc)}` : 'needs 3+ weekend & 5+ weekday nights'} />
+          <Stat label="Best bedtime window" value={bins.best ? `${fmtClock(bins.best.start)}–${fmtClock(bins.best.start + 30)}` : '–'} hint={bins.best ? `${bins.best.nights} nights · best sleep quality + HRV` : 'needs 3+ nights per window'} />
+          <Stat label="Sleep score there" value={bins.best?.sleepScore != null ? Math.round(bins.best.sleepScore) : bins.best?.efficiency != null ? `${Math.round(bins.best.efficiency)}%` : '–'} hint="average in that window" />
+          <Stat label="HRV there" value={bins.best?.nextHrv != null ? `${bins.best.nextHrv.toFixed(1)} ms` : '–'} />
+        </div>
+        <Chart
+          height={240}
+          deps={[bins]}
+          option={(t) => ({
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (ps: any) => { const b = bins.bins[ps[0].dataIndex]; return `<b>Bed ${fmtClock(b.start)}–${fmtClock(b.start + 30)}</b><br/>${b.nights} nights<br/>sleep score ${b.sleepScore != null ? Math.round(b.sleepScore) : '–'} · efficiency ${b.efficiency != null ? Math.round(b.efficiency) + '%' : '–'}<br/>HRV ${b.nextHrv != null ? b.nextHrv.toFixed(1) + ' ms' : '–'}`; } },
+            xAxis: { type: 'category', data: bins.bins.map((b) => fmtClock(b.start)), name: 'bedtime' },
+            yAxis: { type: 'value', name: 'quality (z)', splitNumber: 3 },
+            series: [{
+              type: 'bar', data: bins.bins.map((b) => ({ value: b.score != null ? +b.score.toFixed(2) : null, itemStyle: { color: b === bins.best ? t.good : b.nights < 3 ? t.axis : (b.score ?? 0) >= 0 ? t.series[0] : t.series[1], borderRadius: 3 } })),
+              markLine: { symbol: 'none', silent: true, lineStyle: { color: t.muted }, label: { show: false }, data: [{ yAxis: 0 }] },
+            }],
+          })}
+        />
+        <p className="small muted">Bars above zero = better-than-average nights for you. Grey = fewer than 3 nights (not enough to judge). {chrono && `Weekend sleep shifts your clock by ${Math.round(chrono.socialJetlagMin)} min.`}</p>
+      </Card>
 
       <Card title="Cumulative sleep debt" sub="Hours above (debt) or below (surplus) your target" span={2} actions={<Seg value={target} onChange={setTarget} options={[420, 450, 480].map((v) => ({ v, l: `${v / 60}h` }))} />}>
         <Chart

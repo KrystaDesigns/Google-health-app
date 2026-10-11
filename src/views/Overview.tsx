@@ -7,15 +7,21 @@ import { Card, InsightCard, Kpi, MetricSelect } from '../components/ui';
 import { Chart } from '../components/Chart';
 import { calendarOption, trendOption } from '../components/charts';
 import { META } from '../data/metrics';
+import { normAlerts, describeAlert } from '../lib/norms';
+import { recommend } from '../lib/training';
+
+const CALL = { push: ['▲', 'Good day to push', 'tone-good'], maintain: ['■', 'Train normally', 'tone-info'], recover: ['▼', 'Prioritise recovery', 'tone-serious'] } as const;
 
 const KPIS: NumericKey[] = ['steps', 'azm', 'sleepMin', 'sleepScore', 'restingHr', 'hrv', 'readiness', 'spo2'];
 
 export function Overview() {
-  const { ds, days, prevDays, goto } = useApp();
+  const { ds, days, prevDays, goto, load, today } = useApp();
   const [calKey, setCalKey] = useState<NumericKey>('steps');
   const [trendKey, setTrendKey] = useState<NumericKey>('restingHr');
   const insights = useMemo(() => buildInsights(ds, days), [ds, days]);
   const kpis = KPIS.filter((k) => days.some((d) => d[k] != null));
+  const alerts = useMemo(() => normAlerts(ds, today), [ds, today]);
+  const rec = useMemo(() => recommend(ds, load), [ds, load]);
 
   return (
     <div className="grid">
@@ -25,6 +31,25 @@ export function Overview() {
         ))}
       </div>
 
+      {(rec || alerts.length > 0) && (
+        <div className="today span-3">
+          {rec && (
+            <article className={`insight ${CALL[rec.call][2]}`} role="button" tabIndex={0} onClick={() => goto('training')}>
+              <div className="insight-badge"><span className="ico" aria-hidden>{CALL[rec.call][0]}</span>Today · {rec.date}</div>
+              <h4>{CALL[rec.call][1]}</h4>
+              <p>{rec.reasons.map((r) => r.text).join(' · ')}</p>
+            </article>
+          )}
+          {alerts.slice(0, 3).map((a) => (
+            <article key={a.metric} className={`insight ${a.bad ? 'tone-warning' : 'tone-good'}`}>
+              <div className="insight-badge"><span className="ico" aria-hidden>{a.bad ? '!' : '✓'}</span>{a.bad ? 'Outside your normal' : 'Better than usual'}</div>
+              <h4>{META[a.metric]?.label} {a.dir === 'high' ? 'high' : 'low'} for {a.days} days</h4>
+              <p>{describeAlert(a)}</p>
+            </article>
+          ))}
+        </div>
+      )}
+
       <Card title="Top insights" sub="Auto-detected from your data in this range" span={3} actions={<button className="link" onClick={() => goto('insights')}>All insights →</button>}>
         <div className="insights">
           {insights.slice(0, 6).map((i) => <InsightCard key={i.id} i={i} />)}
@@ -32,7 +57,7 @@ export function Overview() {
         </div>
       </Card>
 
-      <Card title="Trend" sub="Daily value with 7- and 28-day rolling averages and a ±1σ band" span={2} actions={<MetricSelect value={trendKey} onChange={setTrendKey} />}>
+      <Card title="Trend" sub="Daily value with 7- and 28-day rolling averages and your personal normal range" span={2} actions={<MetricSelect value={trendKey} onChange={setTrendKey} />}>
         <Chart height={300} deps={[days, trendKey]} option={(t) => trendOption(t, days, trendKey, { band: true })} />
       </Card>
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useApp, col } from '../state';
-import { Card, Seg, Stat, Empty } from '../components/ui';
+import { Card, Seg, Stat, Empty, MetricSelect } from '../components/ui';
+import type { NumericKey } from '../data/types';
 import { Chart } from '../components/Chart';
 import { histogramOption, trendOption, weekdayBoxOption } from '../components/charts';
 import { clean, mean, sum, weekday, WEEKDAYS } from '../lib/stats';
@@ -9,6 +10,9 @@ import { fmtMetric } from '../data/metrics';
 export function Activity() {
   const { ds, days } = useApp();
   const [goal, setGoal] = useState(10000);
+  const extraKeys = (['floors', 'sedentaryHours', 'zoneModerateMin', 'zoneVigorousMin', 'zonePeakMin', 'distanceKm', 'calories'] as NumericKey[]).filter((k) => days.some((d) => d[k] != null));
+  const [extra, setExtra] = useState<NumericKey>('floors');
+  const extraKey = extraKeys.includes(extra) ? extra : extraKeys[0];
   const steps = clean(col(days, 'steps'));
 
   const hourGrid = useMemo(() => {
@@ -113,6 +117,12 @@ export function Activity() {
           })}
         />
       </Card>
+
+      {extraKey && (
+        <Card title="More activity metrics" sub="Floors, time sitting, time in heart-rate zones and more" span={3} actions={<MetricSelect value={extraKey} onChange={setExtra} keys={extraKeys} />}>
+          <Chart height={260} deps={[days, extraKey]} option={(t) => trendOption(t, days, extraKey, { bars: true })} />
+        </Card>
+      )}
 
       <Card title="Steps distribution">
         <Chart height={300} deps={[steps]} option={(t) => histogramOption(t, steps, 'steps')} />

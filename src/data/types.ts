@@ -33,6 +33,21 @@ export interface DailyRecord {
   wakeMin?: number;
   bedtime?: number; // minutes relative to midnight of `date` (negative = previous evening)
   waketime?: number; // minutes after midnight of `date`
+  outOfBedMin?: number;
+  // extra Google Health metrics
+  vo2max?: number;
+  sedentaryHours?: number;
+  bodyFat?: number;
+  hrvDeep?: number;
+  zoneLightMin?: number;
+  zoneModerateMin?: number;
+  zoneVigorousMin?: number;
+  zonePeakMin?: number;
+  hydrationMl?: number;
+  caloriesIn?: number;
+  period?: number; // 1 on menstrual-period days
+  // derived
+  trainingLoad?: number;
 }
 
 export type NumericKey = {
@@ -51,6 +66,7 @@ export interface SleepSession {
   minutesAwake: number;
   timeInBed: number;
   efficiency?: number;
+  outOfBedMin?: number;
   stages?: { deep: number; light: number; rem: number; wake: number };
   levels?: { t: string; level: SleepLevel; s: number }[];
 }
@@ -81,6 +97,8 @@ export interface Dataset {
   sleep: SleepSession[];
   workouts: Workout[];
   intraday: Record<string, IntradayDay>;
+  /** symptoms / moods logged in Google Health, keyed by date */
+  logged?: Record<string, string[]>;
 }
 
 export interface Settings {
@@ -90,6 +108,24 @@ export interface Settings {
   googleClientId: string;
   googleLastSync?: string; // ISO timestamp of last successful live sync
   googleFirstSyncDays: number;
+  googleExtraScopes?: boolean; // cycle + logged moods/symptoms
+  goals?: Goal[];
+}
+
+export interface Goal {
+  id: string;
+  metric: NumericKey;
+  target: number;
+  /** 'day' = every day hits target; 'week'/'month' = total over the period */
+  period: 'day' | 'week' | 'month';
+  dir: 'atLeast' | 'atMost';
+}
+
+/** Daily habit journal: date → tag ids */
+export interface Journal {
+  tags: string[];
+  entries: Record<string, string[]>;
+  demo?: boolean; // generated with demo data; cleared when real data arrives
 }
 
 export const emptyDataset = (): Dataset => ({
