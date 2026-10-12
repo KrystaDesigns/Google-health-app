@@ -304,3 +304,9 @@ ul.bullets.bad li::marker { color: var(--serious); }
   .card { box-shadow: none; break-inside: avoid; }
   .grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ---------- biological age ---------- */
+.bio-hero { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.bio-age { min-width: 220px; }
+.bio-num { font-size: 56px; font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; }
+td.wrap-cell { white-space: normal; min-width: 260px; }

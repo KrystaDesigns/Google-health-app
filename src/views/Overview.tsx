@@ -9,19 +9,21 @@ import { calendarOption, trendOption } from '../components/charts';
 import { META } from '../data/metrics';
 import { normAlerts, describeAlert } from '../lib/norms';
 import { recommend } from '../lib/training';
+import { estimateBioAge } from '../lib/bioage';
 
 const CALL = { push: ['▲', 'Good day to push', 'tone-good'], maintain: ['■', 'Train normally', 'tone-info'], recover: ['▼', 'Prioritise recovery', 'tone-serious'] } as const;
 
 const KPIS: NumericKey[] = ['steps', 'azm', 'sleepMin', 'sleepScore', 'restingHr', 'hrv', 'readiness', 'spo2'];
 
 export function Overview() {
-  const { ds, days, prevDays, goto, load, today } = useApp();
+  const { ds, days, prevDays, goto, load, today, settings } = useApp();
   const [calKey, setCalKey] = useState<NumericKey>('steps');
   const [trendKey, setTrendKey] = useState<NumericKey>('restingHr');
   const insights = useMemo(() => buildInsights(ds, days), [ds, days]);
   const kpis = KPIS.filter((k) => days.some((d) => d[k] != null));
   const alerts = useMemo(() => normAlerts(ds, today), [ds, today]);
   const rec = useMemo(() => recommend(ds, load), [ds, load]);
+  const bio = useMemo(() => estimateBioAge(ds, today, settings.age, settings.sex ?? 'female'), [ds, today, settings.age, settings.sex]);
 
   return (
     <div className="grid">
@@ -31,7 +33,7 @@ export function Overview() {
         ))}
       </div>
 
-      {(rec || alerts.length > 0) && (
+      {(rec || bio || alerts.length > 0) && (
         <div className="today span-3">
           {rec && (
             <article className={`insight ${CALL[rec.call][2]}`} role="button" tabIndex={0} onClick={() => goto('training')}>
@@ -40,7 +42,14 @@ export function Overview() {
               <p>{rec.reasons.map((r) => r.text).join(' · ')}</p>
             </article>
           )}
-          {alerts.slice(0, 3).map((a) => (
+          {bio && (
+            <article className={`insight ${bio.delta <= 0 ? 'tone-good' : 'tone-warning'}`} role="button" tabIndex={0} onClick={() => goto('bioage')}>
+              <div className="insight-badge"><span className="ico" aria-hidden>⌛</span>Biological age</div>
+              <h4>{bio.bioAge.toFixed(1)} years · {Math.abs(bio.delta).toFixed(1)} {bio.delta <= 0 ? 'younger' : 'older'} than your age</h4>
+              <p>Estimated from steps, fitness, resting HR, sleep and exercise over the last 30 days. Tap for what moves it.</p>
+            </article>
+          )}
+          {alerts.slice(0, 2).map((a) => (
             <article key={a.metric} className={`insight ${a.bad ? 'tone-warning' : 'tone-good'}`}>
               <div className="insight-badge"><span className="ico" aria-hidden>{a.bad ? '!' : '✓'}</span>{a.bad ? 'Outside your normal' : 'Better than usual'}</div>
               <h4>{META[a.metric]?.label} {a.dir === 'high' ? 'high' : 'low'} for {a.days} days</h4>

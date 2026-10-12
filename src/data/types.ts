@@ -110,6 +110,7 @@ export interface Settings {
   googleFirstSyncDays: number;
   googleExtraScopes?: boolean; // cycle + logged moods/symptoms
   goals?: Goal[];
+  sex?: 'female' | 'male';
 }
 
 export interface Goal {

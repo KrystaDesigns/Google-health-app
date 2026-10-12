@@ -10,6 +10,7 @@ browser, and data is stored locally in IndexedDB.
 
 | View | Highlights |
 |---|---|
+| **Biological age** | WHOOP-Age-style estimate from 8 evidence-based factors (steps, VO₂ max vs age/sex norm, resting HR, sleep duration & consistency, weekly active minutes, vigorous exercise, strength training), pace of aging, fitness age, and what to change to gain years |
 | **Journal** | Tag your days (alcohol, late caffeine, stress, meditation… or your own tags). Pulse Lab compares that night's sleep and next-morning recovery with vs without each tag (Welch t-test, effect sizes) — *what actually works for you* |
 | **Training load** | TRIMP from 5-minute heart rate, fitness (CTL) vs fatigue (ATL), form (TSB), acute:chronic workload ratio, and a daily push / maintain / recover call |
 | **Goals** | Daily goals with streaks and 14-day history; weekly/monthly totals with pace forecasts ("at this pace…") |

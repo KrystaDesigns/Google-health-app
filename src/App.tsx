@@ -9,6 +9,7 @@ import { Journal as JournalView } from './views/Journal';
 import { Training } from './views/Training';
 import { Goals } from './views/Goals';
 import { Report } from './views/Report';
+import { BioAge } from './views/BioAge';
 import { mergeDatasets } from './data/derive';
 import { AppCtx, boundsOf, denseDays, type Range } from './state';
 import { addDays, daysBetween } from './lib/stats';
@@ -40,6 +41,7 @@ export interface SyncState {
 const VIEWS = [
   { id: 'overview', label: 'Overview', icon: '◎' },
   { id: 'insights', label: 'Insights', icon: '✦' },
+  { id: 'bioage', label: 'Biological age', icon: '⌛' },
   { id: 'report', label: 'Weekly report', icon: '▤' },
   { id: 'goals', label: 'Goals', icon: '◉' },
   { id: 'journal', label: 'Journal', icon: '✎' },
@@ -207,6 +209,7 @@ export default function App() {
       case 'training': return <Training />;
       case 'goals': return <Goals />;
       case 'report': return <Report />;
+      case 'bioage': return <BioAge />;
       case 'import':
         return (
           <Import
